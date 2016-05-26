@@ -27,7 +27,7 @@ boolean CheckSim800 = false;
 boolean mqttSent = false;
 
 //definir  parametros de conexion a servicio de MQtt
-const char* server = "iotarduinodaygt.flatbox.io";
+const char* server = "67.228.191.108";
 const char* port =  "1883";
 char* clientId = "2GNode";
 char * topic = "prueba";
@@ -44,9 +44,9 @@ boolean isGPRSReady(){
   Serial.println(F("AT"));
   GSMSrl.println(F("AT"));
   GSMSrl.println(F("AT+CGATT?"));
-  //GPRSread();
+  GPRSread();
   GSMSrl.println(F("AT+CGREG?"));
-  //GPRSread();
+  GPRSread();
   Serial.print(F("data2:"));
   Serial.println(data2);
   delay (200);
@@ -91,26 +91,26 @@ void setup(){
 
 void wakeUpModem (){
   GSMSrl.println(F("AT")); // Sends AT command to wake up cell phone
-  //GPRSread();
+  GPRSread();
   delay(800); // Wait a second
 }
 
 void ConnectToAPN(){
   GSMSrl.println(F("AT+CSTT=\"broadband.tigo.gt\",\"\",\"\"")); // Puts phone into GPRS mode
-  //GPRSread();
-  delay(800); // Wait a second
+  GPRSread();
+  delay(1000); // Wait a second
 }
 
 void BringUpGPRS(){
   GSMSrl.println(F("AT+CIICR"));  
-  //GPRSread();
-  delay(800);  
+  GPRSread();
+  delay(1000);  
 }
 
 void GetIPAddress(){
   GSMSrl.println(F("AT+CIFSR"));
-  //GPRSread();
-  delay(800);
+  GPRSread();
+  delay(1000);
 }
 
 
@@ -150,17 +150,6 @@ void parseTag() {
   tagId[10] = 0;
 }
 
-// once a whole tag is read, process it
-void processTag() {
-  // convert id to a string
-  parseTag();
-  //Send TagINFO to MQTT
-  GetTime();
-  buildJson();
-  // print it
-  printTag();
-}
-
 // this function clears the rest of data on the serial, to prevent multiple scans
 void clearSerial() {
    while (Serial.read() >= 0) {
@@ -175,7 +164,7 @@ void clearSerial() {
     ; // do nothing
   }
   RFID.flush();
-  asm volatile ("  jmp 0");
+  //asm volatile ("  jmp 0");
 }
 
 void printTag() {
@@ -187,8 +176,6 @@ void printTag() {
 }
 
 void loop (){
-  unsigned long millisStart = millis();
-  
   if(CheckSim800 = true){
   digitalWrite(verde, HIGH);
   }
@@ -204,7 +191,9 @@ void loop (){
       break;
       case 3:
       // process the tag we just read
-      processTag();
+      parseTag();
+      GetTime();
+      buildJson();
       sendMQTTMessage();
       // clear serial to prevent multiple reads
       clearSerial();
@@ -218,9 +207,7 @@ void loop (){
       ++counter;
       break;
     }
-  }
- unsigned long millisWithFlushStop = millis();
-  
+  }  
 }
 
 void sendMQTTMessage(){
@@ -244,9 +231,10 @@ void StablishTCPconnection (){
 void SendMqttConnectMesage (){
   GSMSrl.println(F("AT+CIPSEND"));
   Serial.println(F("AT+CIPSEND"));
-  delay(500);
+  delay(1000);
   mqttMessageLength = 16 + strlen(clientId);
   //Serial.println(mqttMessageLength);
+  delay(100);
   mqtt_connect_message(mqttMessage, clientId);
   for (int j = 0; j < mqttMessageLength; j++) {
     GSMSrl.write(mqttMessage[j]); // Message contents
@@ -255,14 +243,14 @@ void SendMqttConnectMesage (){
   }
   GSMSrl.write(byte(26)); // (signals end of message)
   Serial.println(F("Sent"));
-  delay(500);
+  delay(1000);
 }
 
 void sendMqttMessage () {
   digitalWrite(azul, HIGH);
   GSMSrl.println(F("AT+CIPSEND"));
   Serial.println(F("AT+CIPSEND"));
-  delay(500);
+  delay(1000);
   mqttMessageLength = 4 + strlen(topic) + strlen(payload);
   Serial.println(mqttMessageLength);
   delay(100);
@@ -274,7 +262,7 @@ void sendMqttMessage () {
   GSMSrl.write(byte(26)); // (signals end of message)
   Serial.println(F(""));
   Serial.println(F("-------------Sent-------------")); // Message contents
-  delay(500); 
+  delay(1000); 
   digitalWrite(azul, LOW);
 }
 
