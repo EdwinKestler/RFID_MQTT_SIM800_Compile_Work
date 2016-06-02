@@ -5,10 +5,8 @@
 const int verde = 13; // Pin led verde
 const int rojo = 12;// Pin led rojo
 const int azul = 11;// Pin led azul
-String ISO8601;
 String IDModulo;
-byte data2;
-String ATComRsp;
+
 
 char atCommand[50];
 byte mqttMessage[250];
@@ -23,14 +21,14 @@ SoftwareSerial RFID(2,3); //Rx, TX Arduino --> Tx, Rx En RDM6300
 byte GPRSserialByte;
 
 //Banderas de verificacion
-boolean CheckSim800 = false;
 boolean mqttSent = false;
+boolean SendData = false;
 
 //definir  parametros de conexion a servicio de MQtt
-const char* server = "67.228.191.108";
+const char* server = "184.173.18.156";
 const char* port =  "1883";
 char* clientId = "2GNode";
-char * topic = "prueba";
+char * topic = "rfid2g";
 char payload[250];
 
 
@@ -40,31 +38,8 @@ unsigned int readData[10]; // data read from serial
 int counter = -1; // counter to keep position in the buffer
 char tagId[11]; // final tag ID converted to a string
 
-boolean isGPRSReady(){
-  Serial.println(F("AT"));
-  GSMSrl.println(F("AT"));
-  GSMSrl.println(F("AT+CGATT?"));
-  GPRSread();
-  GSMSrl.println(F("AT+CGREG?"));
-  GPRSread();
-  Serial.print(F("data2:"));
-  Serial.println(data2);
-  delay (200);
-  Serial.println(F("Check OK"));
-  Serial.print(F("AT command RESP:"));
-  Serial.println(ATComRsp);
-  delay(100);
-  if (data2 > -1){
-    Serial.println(F("GPRS OK"));
-    return true;
-  }
-  else {
-    Serial.println(F("GPRS NOT OK"));
-    return false;
-  }
-}
-
 void setup(){
+  String Res;
   pinMode(rojo, OUTPUT);
   digitalWrite(rojo, HIGH);
   //iniciar puerto serial para debug
@@ -72,16 +47,38 @@ void setup(){
   Serial.println(F("Serial Ready"));
   //iniciar puerto para transmicion de data GSM
   GSMSrl.begin(9600);
-  CheckSim800 = isGPRSReady();
-  delay(500);
-  wakeUpModem ();
-  ConnectToAPN();
-  BringUpGPRS();
-  GetIPAddress();
+  //Encender Modem
+  Res = GPRScommnad ("AT");
+  Serial.println(Res);
+  delay(200);
+  //3.2.35 AT+CSQ Signal Quality Report
+  Res = GPRScommnad ("AT+CSQ");
+  Serial.println(Res);
+  delay(200);
+  // 7.2.1 AT+CGATT Attach or Detach from GPRS Service 
+   Res = GPRScommnad ("AT+CGATT?");
+  Serial.println (Res);
+  delay(200);
+  //7.2.10 AT+CGREG Network Registration Status
+  Res = GPRScommnad ("AT+CGREG?");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+CSTT=\"broadband.tigo.gt\",\"\",\"\"");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+CIICR");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+CIFSR");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+CLTS=1");
+  Serial.println (Res);
+  delay(200);
+  GetIMEI();
   Serial.println(F("GSM Ready"));
   RFID.begin(9600);
   Serial.println(F("RFID Ready"));
-  GetIMEI();
   pinMode(verde, OUTPUT);
   pinMode(azul, OUTPUT);
   digitalWrite(verde, LOW);
@@ -89,46 +86,30 @@ void setup(){
   digitalWrite(rojo, LOW);
 }
 
-void wakeUpModem (){
-  GSMSrl.println(F("AT")); // Sends AT command to wake up cell phone
-  GPRSread();
-  delay(800); // Wait a second
-}
-
-void ConnectToAPN(){
-  GSMSrl.println(F("AT+CSTT=\"broadband.tigo.gt\",\"\",\"\"")); // Puts phone into GPRS mode
-  GPRSread();
-  delay(1000); // Wait a second
-}
-
-void BringUpGPRS(){
-  GSMSrl.println(F("AT+CIICR"));  
-  GPRSread();
-  delay(1000);  
-}
-
-void GetIPAddress(){
-  GSMSrl.println(F("AT+CIFSR"));
-  GPRSread();
+void GetIMEI (){
+  String result;
+  result = GPRScommnad ("AT+CGSN");
+  int firstindex = result.indexOf('|');
+  int secondindex = result.indexOf('|', firstindex+1);
+  String command = result.substring(0, firstindex);
+  String imei = result.substring(firstindex+1, secondindex);
+  IDModulo = imei;
+  Serial.println("IDModulo:" + IDModulo);
   delay(1000);
 }
 
-
-boolean  GetIMEI (){
-  String imei = "123456789";
-  IDModulo = imei;
-  Serial.println("IDModulo:" +IDModulo);
-  return true;
-}
-
-boolean GetTime (){
-  String Time = "01/05/2016 15:30";
-  ISO8601 = Time;
-  Serial.println("time:" +ISO8601);
-  return true;
+String GetTime (){
+  String result;
+  result = GPRScommnad ("AT+CCLK?");
+  int firstindex = result.indexOf('"');
+  int secondindex = result.indexOf('"', firstindex + 1);
+  String command = result.substring(0, firstindex);
+  String Clock = result.substring(firstindex + 1, secondindex);
+  return Clock;
 }
 
 void buildJson() {
+  String ISO8601 = GetTime ();
   StaticJsonBuffer<250> jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
   JsonObject& d = root.createNestedObject("d");
@@ -165,26 +146,25 @@ void clearSerial() {
   }
   RFID.flush();
   //asm volatile ("  jmp 0");
+  SendData = true;
 }
 
-void printTag() {
-  Serial.print(F("Tag value: "));
-  Serial.println(tagId);
-  digitalWrite(azul, HIGH);
-  delay (15);
-  digitalWrite(azul, LOW);
-}
-
-void loop (){
-  if(CheckSim800 = true){
+void loop (){  
   digitalWrite(verde, HIGH);
-  }
-    
+  ParseTag();
+  if (SendData == true){
+     SendData = false;
+     buildJson();
+     sendMQTTMessage();
+  }        
+}
+
+void ParseTag(){
+  RFID.listen();
   if (RFID.available() > 0) {
     // read the incoming byte:
     readVal = RFID.read();
-    digitalWrite(verde, LOW);
-    
+    digitalWrite(verde, LOW);    
     switch (readVal) {
       case 2:
       counter = 0; // start reading
@@ -192,9 +172,6 @@ void loop (){
       case 3:
       // process the tag we just read
       parseTag();
-      GetTime();
-      buildJson();
-      sendMQTTMessage();
       // clear serial to prevent multiple reads
       clearSerial();
       // reset reading state
@@ -207,7 +184,7 @@ void loop (){
       ++counter;
       break;
     }
-  }  
+  }
 }
 
 void sendMQTTMessage(){
@@ -224,22 +201,19 @@ void StablishTCPconnection (){
   strcat(atCommand, port);
   strcat(atCommand, "\"");
   GSMSrl.println(atCommand);
-  GPRSread();
   delay(1000);  
 }
 
 void SendMqttConnectMesage (){
+  String sent;
   GSMSrl.println(F("AT+CIPSEND"));
   Serial.println(F("AT+CIPSEND"));
   delay(1000);
   mqttMessageLength = 16 + strlen(clientId);
-  //Serial.println(mqttMessageLength);
-  delay(100);
   mqtt_connect_message(mqttMessage, clientId);
   for (int j = 0; j < mqttMessageLength; j++) {
     GSMSrl.write(mqttMessage[j]); // Message contents
-    Serial.write(mqttMessage[j]); // Message contents
-    //Serial.println("");
+    //Serial.write(mqttMessage[j]); // Message contents
   }
   GSMSrl.write(byte(26)); // (signals end of message)
   Serial.println(F("Sent"));
@@ -272,16 +246,22 @@ void CloseTCPConnection (){
   delay(1000);
 }
 
-void GPRSread (){  
-  if (GSMSrl.available()){
-    while(GSMSrl.available()>0){
-      data2 = (char)GSMSrl.read();
-      Serial.write(data2);
-      ATComRsp += char(data2);
+String GPRScommnad (String comm){
+  GSMSrl.listen();
+  String ATComRsp,response;
+  Serial.println("command:" + comm);
+  GSMSrl.println(comm);
+  delay(500);
+  while(GSMSrl.available()>0){
+    char c = GSMSrl.read();
+    if (c == '\n'){
+      response += ATComRsp + "|";
+      ATComRsp = "";
+    }else{
+      ATComRsp += c;
     }
-    Serial.println(ATComRsp);
-    delay(200);
   }
+  return response;
   ATComRsp ="";
   GSMSrl.flush();
   Serial.flush();
