@@ -9,7 +9,7 @@ String IDModulo;
 
 
 char atCommand[50];
-byte mqttMessage[250];
+byte mqttMessage[150];
 int mqttMessageLength = 0;
 
 //Definir pines de Software Serial.
@@ -29,14 +29,14 @@ const char* server = "184.173.18.156";
 const char* port =  "1883";
 char* clientId = "2GNode";
 char * topic = "rfid2g";
-char payload[250];
+char payload[100];
 
 
 //definir Parametros de Lector de RFID
 int readVal = 0; // individual character read from serial
-unsigned int readData[10]; // data read from serial
+unsigned int readData[12]; // data read from serial
 int counter = -1; // counter to keep position in the buffer
-char tagId[11]; // final tag ID converted to a string
+char tagId[12]; // final tag ID converted to a string
 
 void setup(){
   String Res;
@@ -94,7 +94,7 @@ void GetIMEI (){
   String command = result.substring(0, firstindex);
   String imei = result.substring(firstindex+1, secondindex);
   IDModulo = imei;
-  Serial.println("IDModulo:" + IDModulo);
+  Serial.println(IDModulo);
   delay(1000);
 }
 
@@ -125,10 +125,10 @@ void buildJson() {
 // convert the int values read from serial to ASCII chars
 void parseTag() {
   int i;
-  for (i = 0; i < 10; ++i) {
+  for (i = 0; i < 12; ++i) {
     tagId[i] = readData[i];
   }
-  tagId[10] = 0;
+  tagId[12] = 0;
 }
 
 // this function clears the rest of data on the serial, to prevent multiple scans
