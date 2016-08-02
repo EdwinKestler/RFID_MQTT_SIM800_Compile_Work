@@ -5,6 +5,7 @@
 const int verde = 13; // Pin led verde
 const int rojo = 12;// Pin led rojo
 const int azul = 11;// Pin led azul
+const int SIM800_RESET_PIN = 9;// Pin led azul
 String IDModulo;
 
 
@@ -14,7 +15,7 @@ int mqttMessageLength = 0;
 
 //Definir pines de Software Serial.
 
-SoftwareSerial GSMSrl(7, 8); //Rx, TX Arduino --> Tx, Rx En SIM800
+SoftwareSerial GSMSrl(10, 11); //Rx, TX Arduino --> Tx, Rx En SIM800
 SoftwareSerial RFID(2,3); //Rx, TX Arduino --> Tx, Rx En RDM6300
 
 //definir  parametros de conexion a red GSM
@@ -40,6 +41,8 @@ char tagId[12]; // final tag ID converted to a string
 
 void setup(){
   String Res;
+  //ModemReset ();
+  //delay(10000);
   pinMode(rojo, OUTPUT);
   digitalWrite(rojo, HIGH);
   //iniciar puerto serial para debug
@@ -55,15 +58,21 @@ void setup(){
   Res = GPRScommnad ("AT+CSQ");
   Serial.println(Res);
   delay(200);
+  //3.2.46 AT+CFUN set phone functionality
+  Res = GPRScommnad ("AT+CFUN=1");
+  Serial.println(Res);
+  delay(200);
   // 7.2.1 AT+CGATT Attach or Detach from GPRS Service 
    Res = GPRScommnad ("AT+CGATT?");
   Serial.println (Res);
   delay(200);
   //7.2.10 AT+CGREG Network Registration Status
-  Res = GPRScommnad ("AT+CGREG?");
+  Res = GPRScommnad ("AT+CGREG=1");
   Serial.println (Res);
   delay(200);
-  Res = GPRScommnad ("AT+CSTT=\"broadband.tigo.gt\",\"\",\"\"");
+  Res = GPRScommnad ("AT+CSTT=\"broadband.tigo.gt\",\"\",\"\""); // SIM TIGO
+  //Res = GPRScommnad ("AT+CSTT=\"internet.movistar.gt\",\"\",\"\""); //SIM MOVISTAR
+  //Res = GPRScommnad ("AT+CSTT=\"internet.ideasclaro\",\"\",\"\""); //SIM CLARO
   Serial.println (Res);
   delay(200);
   Res = GPRScommnad ("AT+CIICR");
@@ -75,6 +84,8 @@ void setup(){
   Res = GPRScommnad ("AT+CLTS=1");
   Serial.println (Res);
   delay(200);
+  GetCGREG ();
+  SETNTP();
   GetIMEI();
   Serial.println(F("GSM Ready"));
   RFID.begin(9600);
@@ -84,6 +95,38 @@ void setup(){
   digitalWrite(verde, LOW);
   digitalWrite(azul, LOW);  
   digitalWrite(rojo, LOW);
+}
+void SETNTP (){
+  String Res;
+  Res = GPRScommnad ("AT+SAPBR=3,1,\"Contype\",\"GPRS\"");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+SAPBR=3,1,\"APN\",\"broadband.tigo.gt\"");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+SAPBR=1,1");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+CNTPCID=1");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+CNTP=\"time1.google.com\",-6");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+CNTP");
+  Serial.println (Res);
+  delay(200);
+  Res = GPRScommnad ("AT+CCLK?");
+  Serial.println (Res);
+  delay(200);
+}
+void ModemReset (){
+    pinMode(SIM800_RESET_PIN, OUTPUT);
+    digitalWrite(SIM800_RESET_PIN, HIGH);
+    delay(10);
+    digitalWrite(SIM800_RESET_PIN, LOW);
+    delay(100);
+    digitalWrite(SIM800_RESET_PIN, HIGH);
 }
 
 void GetIMEI (){
@@ -96,6 +139,42 @@ void GetIMEI (){
   IDModulo = imei;
   Serial.println(IDModulo);
   delay(1000);
+}
+
+void GetCGREG (){
+  String result;
+  result = GPRScommnad ("AT+CGREG?");
+  int firstindex = result.indexOf(',');
+  int secondindex = result.indexOf('|', firstindex+1);
+  String comm = result.substring(0, firstindex);
+  String REG = result.substring(firstindex+1, secondindex);
+  Serial.println(comm);
+  Serial.println(REG);
+  delay(1000);  
+}
+
+void GetGPRSSTAT (){
+  String result;
+  result = GPRScommnad ("AT+CGATT?");
+  int firstindex = result.indexOf('|');
+  int secondindex = result.indexOf('|', firstindex+1);
+  String comm = result.substring(0, firstindex);
+  String REG = result.substring(firstindex+1, secondindex);
+  Serial.println(comm);
+  Serial.println(REG);
+  delay(1000);  
+}
+
+void GetTCPSTAT (){
+  String result;
+  result = GPRScommnad ("AT+CIPSTATUS");
+  int firstindex = result.indexOf('|');
+  int secondindex = result.indexOf('|', firstindex+1);
+  String comm = result.substring(0, firstindex);
+  String REG = result.substring(firstindex+1, secondindex);
+  Serial.println(comm);
+  Serial.println(REG);
+  delay(1000);  
 }
 
 String GetTime (){
@@ -116,6 +195,20 @@ void buildJson() {
   JsonObject& data = d.createNestedObject("data");
   data["imei"] = IDModulo;
   data["tag"] = tagId;
+  data["timestamp"] = ISO8601;
+  root.printTo(payload, sizeof(payload));
+  Serial.println(F("publishing device metadata:")); 
+  Serial.println(payload);
+}
+
+void StatusJson() {
+  String ISO8601 = GetTime ();
+  StaticJsonBuffer<250> jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  JsonObject& d = root.createNestedObject("d");
+  JsonObject& data = d.createNestedObject("data");
+  data["imei"] = IDModulo;
+  data["status"] = "online";
   data["timestamp"] = ISO8601;
   root.printTo(payload, sizeof(payload));
   Serial.println(F("publishing device metadata:")); 
@@ -149,14 +242,30 @@ void clearSerial() {
   SendData = true;
 }
 
-void loop (){  
-  digitalWrite(verde, HIGH);
+unsigned long Starttime;
+unsigned long nextsendtime = 60*60*1000UL;
+
+void loop (){
+  Starttime = millis();  
+  digitalWrite(azul, HIGH);
   ParseTag();
   if (SendData == true){
      SendData = false;
      buildJson();
      sendMQTTMessage();
-  }        
+  }
+  if (Starttime >= nextsendtime){
+    String res;
+    StatusJson();
+    sendMQTTMessage();
+    nextsendtime = Starttime + 60*60*1000UL;
+    ModemReset ();
+    delay(1000);
+    res = GPRScommnad ("AT");
+    Serial.println(res);
+    delay(200);
+    //asm volatile ("  jmp 0");         
+  }
 }
 
 void ParseTag(){
@@ -164,7 +273,7 @@ void ParseTag(){
   if (RFID.available() > 0) {
     // read the incoming byte:
     readVal = RFID.read();
-    digitalWrite(verde, LOW);    
+    digitalWrite(azul, LOW);    
     switch (readVal) {
       case 2:
       counter = 0; // start reading
@@ -221,6 +330,7 @@ void SendMqttConnectMesage (){
 }
 
 void sendMqttMessage () {
+  digitalWrite(rojo, HIGH);
   digitalWrite(azul, HIGH);
   GSMSrl.println(F("AT+CIPSEND"));
   Serial.println(F("AT+CIPSEND"));
@@ -236,7 +346,8 @@ void sendMqttMessage () {
   GSMSrl.write(byte(26)); // (signals end of message)
   Serial.println(F(""));
   Serial.println(F("-------------Sent-------------")); // Message contents
-  delay(1000); 
+  delay(1000);
+  digitalWrite(rojo, LOW); 
   digitalWrite(azul, LOW);
 }
 
